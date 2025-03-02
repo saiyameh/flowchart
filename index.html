@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ultimate Flowchart Maker</title>
+  <style>
+    /*** Basic Resets and Layout ***/
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: sans-serif;
+      background: #fafafa;
+    }
+
+    /*** Toolbar Styling ***/
+    #toolbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 60px;
+      background: #eee;
+      padding: 10px;
+      border-bottom: 1px solid #ccc;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 10;
+    }
+    #toolbar button, #toolbar label, #toolbar select {
+      font-size: 14px;
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+    #toolbar input[type="checkbox"] {
+      margin-right: 5px;
+    }
+
+    /*** Canvas Area ***/
+    #canvas {
+      margin-top: 60px;
+      height: calc(100vh - 60px);
+      overflow: auto;
+      position: relative;
+      background: #f9f9f9;
+    }
+
+    /*** SVG Overlay for Connection Lines ***/
+    #svgCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    /*** Node Styling ***/
+    .node {
+      position: absolute;
+      background: linear-gradient(135deg, #ffffff, #f0f0f0);
+      border: 1px solid #ccc;
+      box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+      padding-top: 30px;
+      padding-bottom: 10px;
+      padding-left: 10px;
+      padding-right: 10px;
+      min-width: 120px;
+      min-height: 60px;
+      cursor: move;
+      border-radius: 4px;
+      transition: left 0.1s, top 0.1s, width 0.1s, height 0.1s;
+    }
+
+    /*** Node Header (for dragging) ***/
+    .node-header {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 30px;
+      background: #ddd;
+      border-bottom: 1px solid #ccc;
+      border-top-left-radius: 4px;
+      border-top-right-radius: 4px;
+      cursor: move;
+      user-select: none;
+      touch-action: none; /* Prevent scrolling on touch */
+    }
+
+    /*** Color Picker Icon ***/
+    .color-picker {
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      width: 20px;
+      height: 20px;
+      background: #fff;
+      border: 1px solid #999;
+      cursor: pointer;
+      z-index: 10;
+    }
+
+    /*** Remove Button ***/
+    .remove-btn {
+      position: absolute;
+      top: 5px;
+      left: 30px;
+      width: 20px;
+      height: 20px;
+      border: none;
+      background: transparent;
+      color: #d00;
+      font-weight: bold;
+      cursor: pointer;
+      z-index: 10;
+    }
+
+    /*** Resize Buttons (+ and –) ***/
+    .resize-buttons {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+    }
+    .resize-buttons button {
+      width: 20px;
+      height: 20px;
+      margin-left: 2px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    /*** Connect Button ***/
+    .connect-btn {
+      position: absolute;
+      bottom: -10px;
+      right: -10px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #0d6efd;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 20px;
+    }
+
+    /*** Color Palette Popup ***/
+    .color-palette {
+      position: absolute;
+      top: 35px;
+      left: 5px;
+      background: #fff;
+      border: 1px solid #ccc;
+      padding: 5px;
+      display: flex;
+      gap: 5px;
+      box-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+      z-index: 100;
+    }
+    .color-swatch {
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+      border: 1px solid #999;
+    }
+
+    /*** Resize Handle ***/
+    .resize-handle {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      left: 0;
+      bottom: 0;
+      cursor: sw-resize;
+      background: #ccc;
+      border: 1px solid #999;
+      touch-action: none; /* Prevent scrolling on touch */
+    }
+
+    /*** Media Query for Mobile Devices ***/
+    @media (max-width: 768px) {
+      #toolbar {
+        flex-wrap: wrap;
+        height: auto;
+        padding: 5px;
+      }
+      #toolbar button, #toolbar select {
+        font-size: 12px;
+        padding: 5px;
+      }
+      #canvas {
+        margin-top: 80px; /* Adjust based on toolbar height */
+        height: calc(100vh - 80px);
+      }
+      .node {
+        min-width: 100px;
+        min-height: 50px;
+      }
+      .connect-btn {
+        width: 30px;
+        height: 30px;
+        font-size: 16px;
+      }
+      .resize-handle {
+        width: 15px;
+        height: 15px;
+      }
+      .color-swatch {
+        width: 30px;
+        height: 30px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <button id="addNodeBtn" title="Add a new node">Add Node</button>
+    <button id="clearBtn" title="Clear all nodes and connections">Clear All</button>
+    <button id="saveBtn" title="Save current flowchart">Save Flowchart</button>
+    <select id="savedCharts" title="Select a saved flowchart"></select>
+    <button id="loadChartBtn" title="Load selected flowchart">Load Selected</button>
+    <label title="Toggle curved connection lines">
+      <input type="checkbox" id="curvedToggle"> Curved Connections
+    </label>
+    <span id="connectingInfo" style="margin-left:20px; color:#d00;"></span>
+  </div>
+
+  <!-- Canvas containing nodes and SVG overlay -->
+  <div id="canvas">
+    <svg id="svgCanvas"></svg>
+  </div>
+
+  <script>
+    // *** Global State Variables ***
+    let nodeCounter = 0;
+    let nodes = {};
+    let connections = [];
+    let currentConnectionStart = null;
+    let useCurvedConnections = false;
+
+    // *** DOM Elements ***
+    const canvas = document.getElementById('canvas');
+    const svgCanvas = document.getElementById('svgCanvas');
+    const connectingInfo = document.getElementById('connectingInfo');
+    const savedChartsSelect = document.getElementById('savedCharts');
+
+    // *** Toolbar Event Listeners ***
+    document.getElementById('addNodeBtn').addEventListener('click', () => {
+      createNode(100 + Math.random() * 200, 100 + Math.random() * 200);
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      Object.values(nodes).forEach(node => node.remove());
+      nodes = {};
+      connections.forEach(conn => conn.line.remove());
+      connections = [];
+      connectingInfo.textContent = '';
+    });
+
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      let name = prompt("Enter a name for this flowchart:");
+      if (!name) return;
+      const flowchart = {
+        nodes: Object.values(nodes).map(node => ({
+          id: node.getAttribute('data-id'),
+          left: node.style.left,
+          top: node.style.top,
+          width: node.style.width,
+          height: node.style.height,
+          background: node.style.background,
+          content: node.querySelector('.node-content').innerText
+        })),
+        connections: connections.map(conn => ({ from: conn.from, to: conn.to }))
+      };
+      localStorage.setItem("flowchart_" + name, JSON.stringify(flowchart));
+      let list = localStorage.getItem("flowchartList");
+      let savedCharts = list ? JSON.parse(list) : [];
+      if (!savedCharts.includes(name)) {
+        savedCharts.push(name);
+        localStorage.setItem("flowchartList", JSON.stringify(savedCharts));
+      }
+      updateSavedChartsDropdown();
+      alert("Flowchart saved as '" + name + "'!");
+    });
+
+    document.getElementById('loadChartBtn').addEventListener('click', () => {
+      const name = savedChartsSelect.value;
+      if (!name) {
+        alert("No saved chart selected!");
+        return;
+      }
+      const dataStr = localStorage.getItem("flowchart_" + name);
+      if (!dataStr) {
+        alert("Could not load chart: " + name);
+        return;
+      }
+      const data = JSON.parse(dataStr);
+      Object.values(nodes).forEach(node => node.remove());
+      nodes = {};
+      connections.forEach(conn => conn.line.remove());
+      connections = [];
+      nodeCounter = 0;
+      data.nodes.forEach(n => {
+        const node = createNode(parseInt(n.left), parseInt(n.top), n.id);
+        node.style.left = n.left;
+        node.style.top = n.top;
+        node.style.width = n.width;
+        node.style.height = n.height;
+        node.style.background = n.background;
+        node.querySelector('.node-content').innerText = n.content;
+      });
+      data.connections.forEach(c => createConnection(c.from, c.to));
+      alert("Flowchart loaded: " + name);
+    });
+
+    document.getElementById('curvedToggle').addEventListener('change', function() {
+      useCurvedConnections = this.checked;
+      connections.forEach(conn => updateConnectionLine(conn.from, conn.to, conn.line));
+    });
+
+    // *** Update Saved Charts Dropdown ***
+    function updateSavedChartsDropdown() {
+      let list = localStorage.getItem("flowchartList");
+      let savedCharts = list ? JSON.parse(list) : [];
+      savedChartsSelect.innerHTML = "";
+      savedCharts.forEach(name => {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        savedChartsSelect.appendChild(option);
+      });
+    }
+    updateSavedChartsDropdown();
+
+    // *** Create a Node ***
+    function createNode(x = 50, y = 50, customId) {
+      let nodeId = customId || String(++nodeCounter);
+      if (customId) nodeCounter = Math.max(nodeCounter, parseInt(customId));
+      const node = document.createElement('div');
+      node.className = 'node';
+      node.style.left = x + 'px';
+      node.style.top = y + 'px';
+      node.style.width = '150px';
+      node.style.height = '100px';
+      node.setAttribute('data-id', nodeId);
+
+      const header = document.createElement('div');
+      header.className = 'node-header';
+      node.appendChild(header);
+
+      const colorPicker = document.createElement('div');
+      colorPicker.className = 'color-picker';
+      header.appendChild(colorPicker);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'remove-btn';
+      removeBtn.textContent = '×';
+      header.appendChild(removeBtn);
+
+      const resizeDiv = document.createElement('div');
+      resizeDiv.className = 'resize-buttons';
+      header.appendChild(resizeDiv);
+      const plusBtn = document.createElement('button');
+      plusBtn.textContent = '+';
+      resizeDiv.appendChild(plusBtn);
+      const minusBtn = document.createElement('button');
+      minusBtn.textContent = '–';
+      resizeDiv.appendChild(minusBtn);
+
+      const connectBtn = document.createElement('button');
+      connectBtn.className = 'connect-btn';
+      connectBtn.textContent = 'C';
+      node.appendChild(connectBtn);
+
+      const content = document.createElement('div');
+      content.className = 'node-content';
+      content.contentEditable = true;
+      content.style.minHeight = '40px';
+      content.textContent = 'Type here';
+      node.appendChild(content);
+
+      const resizeHandle = document.createElement('div');
+      resizeHandle.className = 'resize-handle';
+      node.appendChild(resizeHandle);
+
+      // Add event listeners for dragging (mouse and touch)
+      header.addEventListener('mousedown', startDrag);
+      header.addEventListener('touchstart', startDrag, { passive: false });
+
+      // Prevent propagation for interactive elements
+      [plusBtn, minusBtn, colorPicker, removeBtn, connectBtn, resizeHandle].forEach(el => {
+        el.addEventListener('mousedown', e => e.stopPropagation());
+        el.addEventListener('touchstart', e => e.stopPropagation(), { passive: false });
+      });
+
+      plusBtn.addEventListener('click', () => {
+        const style = window.getComputedStyle(node);
+        node.style.width = (parseFloat(style.width) * 1.1) + 'px';
+        node.style.height = (parseFloat(style.height) * 1.1) + 'px';
+        updateConnections(node);
+      });
+
+      minusBtn.addEventListener('click', () => {
+        const style = window.getComputedStyle(node);
+        node.style.width = (parseFloat(style.width) * 0.9) + 'px';
+        node.style.height = (parseFloat(style.height) * 0.9) + 'px';
+        updateConnections(node);
+      });
+
+      colorPicker.addEventListener('click', e => {
+        e.stopPropagation();
+        let palette = node.querySelector('.color-palette');
+        if (palette) { palette.remove(); return; }
+        palette = document.createElement('div');
+        palette.className = 'color-palette';
+        const colors = ['#ffffff', '#ffcccc', '#ccffcc', '#ccccff', '#ffffcc', '#ccffff'];
+        colors.forEach(color => {
+          const swatch = document.createElement('div');
+          swatch.className = 'color-swatch';
+          swatch.style.background = color;
+          swatch.addEventListener('click', () => {
+            node.style.background = color;
+            colorPicker.style.background = color;
+            palette.remove();
+          });
+          palette.appendChild(swatch);
+        });
+        node.appendChild(palette);
+      });
+
+      removeBtn.addEventListener('click', () => {
+        const id = node.getAttribute('data-id');
+        connections = connections.filter(conn => {
+          if (conn.from === id || conn.to === id) {
+            conn.line.remove();
+            return false;
+          }
+          return true;
+        });
+        node.remove();
+        delete nodes[id];
+      });
+
+      connectBtn.addEventListener('click', () => {
+        const id = node.getAttribute('data-id');
+        if (currentConnectionStart === null) {
+          currentConnectionStart = id;
+          connectingInfo.textContent = 'Connecting from Node ' + id + '... Click another node.';
+          connectBtn.style.background = '#0a0';
+        } else if (currentConnectionStart === id) {
+          currentConnectionStart = null;
+          connectingInfo.textContent = '';
+          connectBtn.style.background = '#0d6efd';
+        } else {
+          createConnection(currentConnectionStart, id);
+          currentConnectionStart = null;
+          connectingInfo.textContent = '';
+          nodes[id].querySelector('.connect-btn').style.background = '#0d6efd';
+        }
+      });
+
+      resizeHandle.addEventListener('mousedown', startResize);
+      resizeHandle.addEventListener('touchstart', startResize, { passive: false });
+
+      canvas.appendChild(node);
+      nodes[nodeId] = node;
+      return node;
+    }
+
+    // *** Drag Functionality (Mouse and Touch) ***
+    function startDrag(e) {
+      e.preventDefault();
+      const isTouch = e.type === 'touchstart';
+      const startX = isTouch ? e.touches[0].clientX : e.clientX;
+      const startY = isTouch ? e.touches[0].clientY : e.clientY;
+      const node = e.target.parentElement;
+      const startLeft = parseFloat(node.style.left);
+      const startTop = parseFloat(node.style.top);
+
+      function onMove(e) {
+        const currentX = isTouch ? e.touches[0].clientX : e.clientX;
+        const currentY = isTouch ? e.touches[0].clientY : e.clientY;
+        node.style.left = (startLeft + (currentX - startX)) + 'px';
+        node.style.top = (startTop + (currentY - startY)) + 'px';
+        updateConnections(node);
+      }
+
+      function onEnd() {
+        if (isTouch) {
+          document.removeEventListener('touchmove', onMove);
+          document.removeEventListener('touchend', onEnd);
+        } else {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onEnd);
+        }
+      }
+
+      if (isTouch) {
+        document.addEventListener('touchmove', onMove, { passive: false });
+        document.addEventListener('touchend', onEnd);
+      } else {
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onEnd);
+      }
+    }
+
+    // *** Resize Functionality (Mouse and Touch) ***
+    function startResize(e) {
+      e.preventDefault();
+      const isTouch = e.type === 'touchstart';
+      const startX = isTouch ? e.touches[0].clientX : e.clientX;
+      const startY = isTouch ? e.touches[0].clientY : e.clientY;
+      const node = e.target.parentElement;
+      const startWidth = node.offsetWidth;
+      const startHeight = node.offsetHeight;
+
+      function onMove(e) {
+        const currentX = isTouch ? e.touches[0].clientX : e.clientX;
+        const currentY = isTouch ? e.touches[0].clientY : e.clientY;
+        const newWidth = Math.max(120, startWidth + (currentX - startX));
+        const newHeight = Math.max(60, startHeight + (currentY - startY));
+        node.style.width = newWidth + 'px';
+        node.style.height = newHeight + 'px';
+        updateConnections(node);
+      }
+
+      function onEnd() {
+        if (isTouch) {
+          document.removeEventListener('touchmove', onMove);
+          document.removeEventListener('touchend', onEnd);
+        } else {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onEnd);
+        }
+      }
+
+      if (isTouch) {
+        document.addEventListener('touchmove', onMove, { passive: false });
+        document.addEventListener('touchend', onEnd);
+      } else {
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onEnd);
+      }
+    }
+
+    // *** Calculate Intersection Point with Rectangle Boundary ***
+    function getIntersectionRect(rect, center, target) {
+      const dx = target.x - center.x;
+      const dy = target.y - center.y;
+      if (dx === 0 && dy === 0) return { x: center.x, y: center.y };
+
+      const tValues = [];
+
+      if (dx !== 0) {
+        let t = (rect.left - center.x) / dx;
+        if (t > 0) {
+          const y = center.y + t * dy;
+          if (y >= rect.top && y <= rect.top + rect.height) tValues.push(t);
+        }
+        t = (rect.left + rect.width - center.x) / dx;
+        if (t > 0) {
+          const y = center.y + t * dy;
+          if (y >= rect.top && y <= rect.top + rect.height) tValues.push(t);
+        }
+      }
+
+      if (dy !== 0) {
+        let t = (rect.top - center.y) / dy;
+        if (t > 0) {
+          const x = center.x + t * dx;
+          if (x >= rect.left && x <= rect.left + rect.width) tValues.push(t);
+        }
+        t = (rect.top + rect.height - center.y) / dy;
+        if (t > 0) {
+          const x = center.x + t * dx;
+          if (x >= rect.left && x <= rect.left + rect.width) tValues.push(t);
+        }
+      }
+
+      if (tValues.length === 0) return { x: center.x, y: center.y };
+      const minT = Math.min(...tValues);
+      return { x: center.x + minT * dx, y: center.y + minT * dy };
+    }
+
+    // *** Create a Connection ***
+    function createConnection(fromId, toId) {
+      if (connections.some(conn => conn.from === fromId && conn.to === toId)) return;
+      const path = document.createElementNS("http://www.w3.org/2000/svg", 'path');
+      path.setAttribute('stroke', 'black');
+      path.setAttribute('stroke-width', '2');
+      path.setAttribute('fill', 'none');
+      svgCanvas.appendChild(path);
+      connections.push({ from: fromId, to: toId, line: path });
+      updateConnectionLine(fromId, toId, path);
+    }
+
+    // *** Update Connection Line ***
+    function updateConnectionLine(fromId, toId, path) {
+      const fromNode = nodes[fromId];
+      const toNode = nodes[toId];
+      if (!fromNode || !toNode) return;
+
+      const fromRect = {
+        left: fromNode.offsetLeft,
+        top: fromNode.offsetTop,
+        width: fromNode.offsetWidth,
+        height: fromNode.offsetHeight
+      };
+      const toRect = {
+        left: toNode.offsetLeft,
+        top: toNode.offsetTop,
+        width: toNode.offsetWidth,
+        height: toNode.offsetHeight
+      };
+
+      const fromCenter = {
+        x: fromRect.left + fromRect.width / 2,
+        y: fromRect.top + fromRect.height / 2
+      };
+      const toCenter = {
+        x: toRect.left + toRect.width / 2,
+        y: toRect.top + toRect.height / 2
+      };
+
+      const fromEdge = getIntersectionRect(fromRect, fromCenter, toCenter);
+      const toEdge = getIntersectionRect(toRect, toCenter, fromCenter);
+
+      if (!useCurvedConnections) {
+        path.setAttribute('d', `M ${fromEdge.x},${fromEdge.y} L ${toEdge.x},${toEdge.y}`);
+      } else {
+        const dx = toEdge.x - fromEdge.x;
+        const dy = toEdge.y - fromEdge.y;
+        const mid = { x: (fromEdge.x + toEdge.x) / 2, y: (fromEdge.y + toEdge.y) / 2 };
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const perp = dist === 0 ? { x: 0, y: 0 } : { x: -dy / dist, y: dx / dist };
+        const factor = dist * 0.2;
+        const cp = { x: mid.x + perp.x * factor, y: mid.y + perp.y * factor };
+        path.setAttribute('d', `M ${fromEdge.x},${fromEdge.y} Q ${cp.x},${cp.y} ${toEdge.x},${toEdge.y}`);
+      }
+    }
+
+    // *** Update All Connections for a Node ***
+    function updateConnections(node) {
+      const nodeId = node.getAttribute('data-id');
+      connections.forEach(conn => {
+        if (conn.from === nodeId || conn.to === nodeId) {
+          updateConnectionLine(conn.from, conn.to, conn.line);
+        }
+      });
+    }
+
+    // *** Resize SVG Overlay ***
+    function resizeSvg() {
+      svgCanvas.setAttribute('width', canvas.clientWidth);
+      svgCanvas.setAttribute('height', canvas.clientHeight);
+    }
+    window.addEventListener('resize', resizeSvg);
+    resizeSvg();
+
+    // *** Initialize with a Node ***
+    createNode(100, 100);
+  </script>
+</body>
+</html>
