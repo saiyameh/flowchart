@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Tree</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    /* Global Styles */
+    html, body {
+      height: 100%; /* Ensure full viewport height */
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      background: #fff;
+      color: #000;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Editor Container */
+    #editor {
+      width: 300px;
+      margin: 10px auto;
+      padding: 10px 0;
+      background: #fff;
+    }
+    /* Editor Form Styles */
+    #editor label {
+      display: block;
+      margin-top: 10px;
+      font-weight: bold;
+      font-size: 16px;
+    }
+    #editor input, #editor textarea, #editor select {
+      width: 300px;
+      padding: 6px;
+      margin-top: 4px;
+      border: 1px solid #bbb;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 16px;
+      font-family: Arial, sans-serif;
+    }
+    /* Button Container */
+    .button-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 10px;
+      width: 300px;
+    }
+    /* Button Styles */
+    .button-container button {
+      padding: 10px 15px;
+      background: #2c2c2c;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      font-family: Arial, sans-serif;
+    }
+    .button-container button:hover {
+      background: #444444;
+    }
+    /* Tree Visualization Container */
+    #tree-vis {
+      flex: 1; /* Take all remaining space */
+      width: 100%;
+      background: #fff;
+      min-height: 0; /* Prevent flex shrinkage issues */
+    }
+    /* Tree SVG Styles */
+    #tree-svg {
+      width: 100%;
+      height: 100%; /* Ensure SVG fills container */
+      background: #fff;
+    }
+    .link {
+      fill: none;
+      stroke: #000;
+      stroke-width: 1.5px;
+    }
+    .node rect {
+      fill: #fff;
+      stroke: #000;
+      stroke-width: 1.5px;
+    }
+    .node text {
+      font: 14px Arial, sans-serif;
+      fill: #000;
+      pointer-events: none;
+    }
+    marker#arrow path {
+      fill: #000;
+    }
+    /* Responsive Adjustments */
+    @media (max-width: 600px) {
+      #editor {
+        width: 100%;
+        max-width: 300px;
+      }
+      #editor input, #editor textarea, #editor select {
+        width: 100%;
+        max-width: 300px;
+      }
+      .button-container {
+        grid-template-columns: 1fr;
+        width: 100%;
+        max-width: 300px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="editor">
+    <div id="editor-form"></div>
+    <div class="button-container">
+      <button id="add-node-btn">Add Node</button>
+      <button id="reset-btn">Reset Diagram</button>
+      <button id="export-btn">Export Diagram</button>
+      <button id="import-btn">Import Diagram</button>
+    </div>
+    <input type="file" id="import-file" style="display: none;" accept=".json">
+  </div>
+  <div id="tree-vis">
+    <svg id="tree-svg"></svg>
+  </div>
+  <script>
+    // Global tree structure with initial root node
+    let treeData = { id: 1, text: "Root", children: [] };
+    let nodeIdCounter = 2;
+    let nodeList = [treeData];
+
+    // Utility: Traverse tree and collect all nodes
+    function getAllNodes(node, arr = []) {
+      arr.push(node);
+      if (node.children) {
+        node.children.forEach(child => getAllNodes(child, arr));
+      }
+      return arr;
+    }
+
+    // Render the node editor form
+    function renderEditor() {
+      const formDiv = document.getElementById('editor-form');
+      formDiv.innerHTML = '';
+      const allNodes = nodeList;
+      let optionsHtml = '';
+      allNodes.forEach(node => {
+        optionsHtml += `<option value="${node.id}">ID ${node.id}: ${node.text.substring(0,30)}</option>`;
+      });
+      formDiv.innerHTML = `
+        <label for="parent-id">Select Parent Node:</label>
+        <select id="parent-id">${optionsHtml}</select>
+        <label for="node-text">New Node Text:</label>
+        <textarea id="node-text" rows="3" placeholder="Enter new node text..."></textarea>
+      `;
+    }
+
+    // Render the tree diagram using D3
+    function renderTree() {
+      const svg = d3.select("#tree-svg");
+      svg.selectAll("*").remove();
+
+      const margin = { top: 20, right: 90, bottom: 30, left: 90 };
+      const svgBox = svg.node().getBoundingClientRect();
+      const availableWidth = svgBox.width - margin.left - margin.right;
+      const availableHeight = svgBox.height - margin.top - margin.bottom;
+
+      const g = svg.append("g");
+
+      const root = d3.hierarchy(treeData, d => d.children);
+      const nodeWidth = 120;
+      const nodeHeight = 60;
+      const treeLayout = d3.tree().nodeSize([nodeWidth, nodeHeight]);
+      treeLayout(root);
+
+      // Add zoom behavior
+      const zoom = d3.zoom()
+        .on("zoom", (event) => {
+          g.attr("transform", event.transform);
+        });
+      svg.call(zoom);
+
+      // Add arrow marker for links
+      svg.append("defs").append("marker")
+        .attr("id", "arrow")
+        .attr("viewBox", "0 -5 10 10")
+        .attr("refX", 5)
+        .attr("refY", 0)
+        .attr("markerWidth", 4)
+        .attr("markerHeight", 4)
+        .attr("orient", "auto")
+        .append("path")
+        .attr("d", "M0,-5L10,0L0,5")
+        .attr("fill", "#000");
+
+      // Links
+      g.selectAll(".link")
+        .data(root.links())
+        .enter().append("path")
+        .attr("class", "link")
+        .attr("fill", "none")
+        .attr("stroke", "#000")
+        .attr("stroke-width", 1.5)
+        .attr("marker-end", "url(#arrow)")
+        .attr("d", d3.linkVertical()
+          .x(d => d.x)
+          .y(d => d.y)
+        );
+
+      // Nodes
+      const node = g.selectAll(".node")
+        .data(root.descendants())
+        .enter().append("g")
+        .attr("class", "node")
+        .attr("transform", d => `translate(${d.x},${d.y})`);
+
+      node.append("rect")
+        .attr("width", 120)
+        .attr("height", 40)
+        .attr("x", -60)
+        .attr("y", -20)
+        .attr("rx", 5)
+        .attr("ry", 5)
+        .attr("fill", "#fff")
+        .attr("stroke", "#000")
+        .attr("stroke-width", 1.5)
+        .on("mouseover", function() {
+          d3.select(this).attr("fill", "#d0d0d0");
+        })
+        .on("mouseout", function() {
+          d3.select(this).attr("fill", "#fff");
+        });
+
+      node.append("text")
+        .attr("dy", 5)
+        .attr("text-anchor", "middle")
+        .text(d => d.data.text.substring(0, 25) + (d.data.text.length > 25 ? "…" : ""));
+
+      // Set initial zoom to fit the tree
+      const bbox = g.node().getBBox();
+      const scale = Math.min(availableWidth / bbox.width, availableHeight / bbox.height);
+      const translateX = margin.left + (availableWidth - bbox.width * scale) / 2 - bbox.x * scale;
+      const translateY = margin.top + (availableHeight - bbox.height * scale) / 2 - bbox.y * scale;
+      const initialTransform = d3.zoomIdentity.translate(translateX, translateY).scale(scale);
+      svg.call(zoom.transform, initialTransform);
+    }
+
+    // Add node button event
+    document.getElementById('add-node-btn').addEventListener('click', () => {
+      const parentId = parseInt(document.getElementById('parent-id').value);
+      const nodeText = document.getElementById('node-text').value.trim();
+      if (!nodeText) {
+        alert("Please enter text for the new node.");
+        return;
+      }
+      const parentNode = nodeList.find(n => n.id === parentId);
+      if (!parentNode) {
+        alert("Parent node not found.");
+        return;
+      }
+      const newNode = { id: nodeIdCounter++, text: nodeText, children: [] };
+      if (!parentNode.children) parentNode.children = [];
+      parentNode.children.push(newNode);
+      nodeList.push(newNode);
+      renderEditor();
+      renderTree();
+    });
+
+    // Reset diagram
+    document.getElementById('reset-btn').addEventListener('click', () => {
+      if (confirm("Reset the entire diagram?")) {
+        treeData = { id: 1, text: "Root", children: [] };
+        nodeIdCounter = 2;
+        nodeList = [treeData];
+        renderEditor();
+        renderTree();
+      }
+    });
+
+    // Export diagram
+    document.getElementById('export-btn').addEventListener('click', () => {
+      if (!treeData) {
+        alert("No diagram to export.");
+        return;
+      }
+      const dataStr = JSON.stringify(treeData, null, 2);
+      const blob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "tree.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // Import diagram
+    document.getElementById('import-btn').addEventListener('click', () => {
+      document.getElementById('import-file').click();
+    });
+
+    document.getElementById('import-file').addEventListener('change', function(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const importedData = JSON.parse(e.target.result);
+          if (!importedData || typeof importedData !== 'object' || !importedData.id || !importedData.text) {
+            throw new Error("Invalid tree structure");
+          }
+          treeData = importedData;
+          nodeList = getAllNodes(treeData);
+          const maxId = Math.max(...nodeList.map(node => parseInt(node.id)), 0);
+          nodeIdCounter = maxId + 1;
+          renderEditor();
+          renderTree();
+        } catch (error) {
+          alert("Invalid JSON file: " + error.message);
+        }
+        event.target.value = '';
+      };
+      reader.readAsText(file);
+    });
+
+    // Initial render
+    renderEditor();
+    renderTree();
+  </script>
+</body>
+</html>
